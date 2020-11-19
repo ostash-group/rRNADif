@@ -5,5 +5,5 @@ By default precomputed database of 21000+ fully sequenced bacterial genomes is a
 # Analysis Pipeline
 ![pipeline](images/pipeline.png)
 # Citation
-This is work in progress, so no publication is available at the moment. If you found this approach valuable, you can site this repo: <br>
+This is a work in progress, so no publication is available at the moment. If you found this approach valuable, you can site this repo: <br>
 P. Hrab & B. Ostash 2020: rRNADif, GitHub repository: https://github.com/pavlohrab/rRNADif

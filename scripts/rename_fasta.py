@@ -1,9 +1,13 @@
+# Passed arguments:
+# $1 - dataframe to use for file renaming
+
 import pandas
 import numpy as np
 import sys
 import os
 import re
 from Bio import SeqIO
+
 #Globals
 seqs = []
 names = []
@@ -35,7 +39,8 @@ def get_files_in_dir(path=os.getcwd(), extension = False):
     Returns a list
     '''
     if extension:
-        entries = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path,f)) and re.search(r""+extension, os.path.splitext(f)[1])]
+        entries = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path,f)) \
+            and re.search(r""+extension, os.path.splitext(f)[1])]
     else:
         entries = [f for f in os.listdir(path) ]
     return entries
@@ -45,18 +50,20 @@ def get_organism_info(filename, dataframe):
     '''
     Get organism name from processed csv file using filename as a code
     '''
-    #Returns pandas series only Organism field, where Code field matches filename, converts it to string,
-    #and cut leading zeroes
-    return dataframe[dataframe['Code']==filename]['Organism'].to_string(header = False, index = False).lstrip()
+    #Returns pandas series only Organism field, where Code field matches filename, 
+    # converts it to string and cut leading zeroes
+    return dataframe[dataframe['Code']==filename]['Organism'].to_string\
+        (header = False, index = False).lstrip()
 
 
 def get_organism_code(name, dataframe):
     '''
     Returns organism code, given it's name as a code
     '''
-    #Returns pandas series only Code field, where Organism field matches filename, converts it to string,
-    #and cut leading zeroes
-    return dataframe[dataframe['Organism']==name]['Code'].to_string(header = False, index = False)
+    #Returns pandas series only Code field, where Organism field matches filename,
+    #  converts it to string and cut leading zeroes
+    return dataframe[dataframe['Organism']==name]['Code'].to_string\
+        (header = False, index = False)
 
 
 def process_dataframe(file):
@@ -78,12 +85,15 @@ def process_dataframe(file):
     for row in df1.iteritems():
         #Checks if information in strain field is already in name field,
         #If not, concatenate name and atrin fileds
-        if df['#Organism Name'].iloc[i].split(' ')[-1] == str(str(df['Strain'].iloc[i]).split(' ')[-1]):
+        if df['#Organism Name'].iloc[i].split(' ')[-1] == str(str(df['Strain']\
+        .iloc[i]).split(' ')[-1]):
             name = df['#Organism Name'].iloc[i]
         else:
-            name = df['#Organism Name'].iloc[i] +' '+str(df['Strain'].iloc[i]).replace("/",'_')
+            name = df['#Organism Name'].iloc[i] +' '+str(df['Strain'].iloc[i])\
+            .replace("/",'_')
         #Appends information to clean dataframe
-        df_clean =  df_clean.append(pandas.Series([row[-1][-1], name], index = df_clean.columns), ignore_index = True)
+        df_clean =  df_clean.append(pandas.Series([row[-1][-1], name],\
+             index = df_clean.columns), ignore_index = True)
 
         i+=1
     return df_clean
@@ -110,12 +120,16 @@ def add_fasta_headers(record):
 
 def write_fasta():
     '''
-    Writes fasta file with organism names and seqs. Returns clean seqs and names list for next entry
-    If there is no 16S listed in the file, add filename to add_rnas and organism name to add_rnas_names
+    Writes fasta file with organism names and seqs. Returns clean seqs and names
+    list for next entry. 
+    If there is no 16S listed in the file, add filename to add_rnas and organism
+    name to add_rnas_names
     '''
     global seqs, names, new_path, df, add_rnas,add_rnas_names
     if check_if_are_entries():
-        name_tmp = names[0].replace(' ', '_').replace('/', '_').replace(':', '_').replace(';', '_').replace(',', '_').replace('[','').replace(']','').replace('*','').replace("'", "")
+        name_tmp = names[0].replace(' ', '_').replace('/', '_').replace(':', '_')\
+            .replace(';', '_').replace(',', '_').replace('[','').replace(']','')\
+                .replace('*','').replace("'", "")
         if name_tmp not in already_seen:
             with open(new_path +'/' +name_tmp+".fasta", "w") as f:
                 for i in range(len(seqs)):
@@ -133,7 +147,9 @@ def write_fasta():
                     already_seen.append(name_tmp_1)
                     break
     else:
-        name_tmp = names[0].replace(' ', '_').replace('/', '_').replace(':', '_').replace(';', '_').replace(',', '_').replace('[','').replace(']','').replace('*','').replace("'", "")
+        name_tmp = names[0].replace(' ', '_').replace('/', '_').replace(':', '_')\
+            .replace(';', '_').replace(',', '_').replace('[','').replace(']','')\
+                .replace('*','').replace("'", "")
         with open(new_path +'/' +name_tmp+".fasta", "w") as f:
             f.write("")
 

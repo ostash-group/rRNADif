@@ -70,7 +70,7 @@ reconstruct phylogeny
 
     -p|--project_name - prefix to name results files and folder
 
-    -n|--database_name- name of database to use. Default: Actinobacteria. 
+    -n|--database_name- name of database to use. Default: Bacteria_full. 
                         Databases can be found at datasets/computed folder. 
                         Folder name is database name.
 
@@ -668,6 +668,7 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
                 hr
                 exit 1
             fi
+            cp "${NAME}_results/input_files/${INPUT}" "${NAME}_results/results/${INPUT_NAME_2}_mafft.fasta"
             # Copy provided 16S sequences for latter use
             if [ "$SEQUENCE_B" -eq 1 ]; then
                 cp  "${SEQUENCE}" "${NAME}_results/results/${INPUT_NAME_2}_16S_clean_rrna.fasta"
@@ -696,6 +697,7 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
                 hr
                 exit 1
             fi
+            
         fi
     fi
     hr
@@ -716,22 +718,32 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         else
             echo ""
             echo "Step 4: Extracting branch length from file."
+            # Extract branch length for and compute mean/median for the provided tree 
             Rscript --vanilla scripts/compute_dataframes_1_seq.R $INPUT_NAME_2 "${NAME}_results/results"
         fi
     fi
     hr
     echo "Combining data from database and provided sequence"
+    # Combine computed dataframe for the input and from database one
+    # Recalculate statistics
     Rscript --vanilla scripts/combine_dataframes.R "${INPUT_NAME_2}_all.csv" \
     "${DATABASE_NAME_2}_all.csv" "${NAME}_results/results"
 
+    # If phylogenetic tree building is required, then do so
     if [ "$TREE" -eq 1 ]; then
         echo ""
         echo "Running phylogenetic inference..."
+        # Make directory for phylogenetic analyses and copy your input 16S there
+        # Rename the sequence to get .clean extension
         mkdir "${NAME}_results/results/phylogeny"
         cp "${NAME}_results/results/${INPUT_NAME_2}_16S_clean_rrna.fasta" \
         "${NAME}_results/database_rrnas/cleaned/${INPUT_NAME_2}_16S_clean_rrna.clean"
+        
+        # Make the one fasta file with all sequences
         cat "${NAME}_results"/database_rrnas/cleaned/*.clean > \
         "${NAME}_results/results/phylogeny/FINAL.fasta"
+
+        # Run the MSA with chosen algoritm
         if [ "$MSA_ALG" = clustalo ]
             then
             clustalo -i "${NAME}_results/results/phylogeny/FINAL.fasta" \
@@ -750,7 +762,9 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
             hr
             exit 1
         fi
-
+        
+        # Run phylogeny with chosen algorithm (rename the final file, if no fa
+        # sttree is chosen to one with .nwk extension)
         if  [ "$TREE_ALG" = fasttree ]
             then
             fasttree -quiet -nt -gtr -out "${NAME}_results/results/phylogeny/FINAL.nwk"\
@@ -772,12 +786,17 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         fi
     fi
 
+    # If --plot flag is passed, build the plot
     if [ "$PLOT" -eq 1 ]; then
         echo ""
         echo "Generating Rplot for non_outlier values..."
+        # Build the plot
         Rscript --vanilla scripts/plot.R Results_no_ouliers.csv "${NAME}_results/results"
     fi
     hr
+
+    # Go to the results folder and make some file rearranging.
+    # Delete temporary files
     cd "${NAME}_results/results"
     mkdir "database_used_data"
     mkdir "input_sequence_individual results"
@@ -787,6 +806,8 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         rm  *.txt
     fi
     rm 	Rplots.pdf
+    
+    # Get the results for an input and print them out
     RESULT_NAME="${INPUT_NAME_2}"
     RESULT_MEAN=$(cat Results_all.csv | grep "${INPUT_NAME_2}" | awk -F ',' '{print $2}')
     RESULT_MEDIAN=$(cat Results_all.csv | grep "${INPUT_NAME_2}" | awk -F ',' '{print $3}')
@@ -794,7 +815,10 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
     echo "Results are:"
     echo "Species name: ${RESULT_NAME}"
     echo "Mean value: ${RESULT_MEAN}"
-    echo "Meadian value: ${RESULT_MEDIAN}"
+    echo "Median value: ${RESULT_MEDIAN}"
+
+    # Print in the terminal if the value for an organism are within 
+    # mean or median outliers/ If no, print that out as well
     if [ "$(cat Results_no_ouliers.csv | grep "${INPUT_NAME_2}")" ]; then
         echo "The results are within no_outlier values"
     fi
