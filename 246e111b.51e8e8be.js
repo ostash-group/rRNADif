@@ -1,0 +1,1 @@
+(window.webpackJsonp=window.webpackJsonp||[]).push([[7],{73:function(e){e.exports=JSON.parse('{"title":"Recent posts","items":[{"title":"Welcome","permalink":"/rRNADif-docs/blog/welcome"},{"title":"Hello","permalink":"/rRNADif-docs/blog/hello-world"},{"title":"Hola","permalink":"/rRNADif-docs/blog/hola"}]}')}}]);
