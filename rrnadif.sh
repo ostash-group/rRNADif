@@ -22,6 +22,7 @@ TREE_ALG=fasttree
 PHYLO=0
 SPLIT=100
 SPLIT_BOOL=0
+ONLY_SPECIES=FALSE
 
 # If any errors stop script execution
 set -e 
@@ -53,8 +54,8 @@ Usage: -i|--input [FILE]; -d|--database_file [FILE]; -p|--project_name [NAME];
        [-n|--database_name [NAME]]; [-s|--sequence [FILE]]; [--plot][--tree]; 
        [--makedb_file [FILE]]; [--makedb_genomes [FOLDER]]; [--split_download [NUM]]
        [--step [1,2,3,4,0]]; [-m|--msa_alg [mafft, muscle,clustalo]]; 
-       [-t|--tree_alg [fasttree, iqtree]]; [--only_phylo]; [-h|--help]; 
-       [-v|--version]
+       [-t|--tree_alg [fasttree, iqtree]]; [--only_phylo]; [--only_species];
+       [-h|--help]; [-v|--version]
 
 The required arguments are: -i ; -d; -p.
 If you are providing MSA or nwk file, please condider using -s flag to 
@@ -137,6 +138,9 @@ Examples: sh rnadif.sh -i Genome.fna -d Streptomyces.csv -p Streptomyces --step
     --only_phylo      - use chosen tree and msa tool only to construct final 
                         phylogenetic tree. For 16S tree fasttree and mafft will 
                         be used. 
+
+    --only_species    - use only one species out of all strains. Used for final
+                        phylogenetic tree construction. 
 
     -h|--help - print this message and exit
 
@@ -276,6 +280,10 @@ while (( "$#" )); do
       ;;
     --only_phylo)
       PHYLO=1
+      shift
+      ;;
+    --only_species)
+      ONLY_SPECIES=TRUE
       shift
       ;;
     -h|--help)
@@ -443,6 +451,16 @@ fi
 
 # The main script if no database creation is need to be done
 
+if [ "$PHYLO" -eq 1 ]; then
+  MSA_ALG_1="$MSA_ALG"
+  TREE_ALG_1="$TREE_ALG"
+  MSA_ALG=mafft
+  TREE_ALG=fasttree
+else
+  MSA_ALG_1="$MSA_ALG"
+  TREE_ALG_1="$TREE_ALG"
+fi
+
 # Get the database and input names. First get the files is 
 DATABASE_NAME=$(echo "$DATABASE" | awk -F '/' '{print $NF}')
 DATABASE_NAME_2=$(basename -s .csv $DATABASE_NAME)
@@ -520,34 +538,48 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         # are generated
         python scripts/preprocess_dataframes.py \
         "${NAME}_results/results/${DATABASE_NAME_2}" \
-        "${NAME}_results/results" "$(pwd)"
+        "${NAME}_results/results" "$(pwd)" "$ONLY_SPECIES"
         
         # Make a folder for filtered 16S rRNAs 
         mkdir "${NAME}_results/database_rrnas/cleaned"
 
         # Copy fasta files for those organisms who need to be filtered (non 
         # outliers) into dayabase_rrnas folder. 
-        while read p; do cp "datasets/computed/${DATABASE_FOLDER}/rrna/$p.fasta" \
+        if [ -f  "${NAME}_results/results/remain_one.txt"  ]; then
+           while read p; do cp "datasets/computed/${DATABASE_FOLDER}/rrna/$p.fasta" \
         "${NAME}_results/database_rrnas"; done < "${NAME}_results/results/remain_one.txt" 
+      fi
         
         # Copy outlier rrnas and single files with rrnas into cleaned folder.
         # We are goind to use them all,
+        if [ -f  "${NAME}_results/results/outliers_mean.txt"  ]; then
         while read p; do cp "datasets/computed/${DATABASE_FOLDER}/rrna/$p.fasta" \
         "${NAME}_results/database_rrnas/cleaned"; done < "${NAME}_results/results/outliers_mean.txt"
+      fi
+
+        if [ -f  "${NAME}_results/results/outliers_median.txt"  ]; then
         while read p; do cp "datasets/computed/${DATABASE_FOLDER}/rrna/$p.fasta" \
         "${NAME}_results/database_rrnas/cleaned"; done < "${NAME}_results/results/outliers_median.txt"
+      fi
+
+        if [ -f  "${NAME}_results/results/only_one.txt"  ]; then
         while read p; do cp "datasets/computed/${DATABASE_FOLDER}/one_rrna/$p.fasta" \
         "${NAME}_results/database_rrnas/cleaned"; done < "${NAME}_results/results/only_one.txt"
+      fi
 
-        # Add number to a fasta header, if it it dukicate in this file. Because 
+        # Add number to a fasta header, if it is duplicated in this file. Because 
         # all sequence in a file are named by organism name, then this step is 
         # necessary to run phylogeny
+        if [ "$(ls -A ${NAME}_results/database_rrnas/cleaned)" ]; then
         cd "${NAME}_results/database_rrnas/cleaned" && for i in *.fasta; do perl -pe \
         's/$/_$seen{$_}/ if ++$seen{$_}>1 and /^>/; ' $i > $i.clean; done && cd ../../../
+      fi
 
         # Rewrite fastas for non outlier organisms to remain only one sequence
+        if [ -f  "${NAME}_results/results/remain_one.txt"  ]; then
         cat "${NAME}_results/results/remain_one.txt" | parallel python scripts/remain_one.py {} \
         "${NAME}_results/database_rrnas/cleaned" "${NAME}_results/database_rrnas"
+      fi
 
         # Remove innitial fasta files
         rm -f "${NAME}_results"/database_rrnas/*.fasta
@@ -744,17 +776,17 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         "${NAME}_results/results/phylogeny/FINAL.fasta"
 
         # Run the MSA with chosen algoritm
-        if [ "$MSA_ALG" = clustalo ]
+        if [ "$MSA_ALG_1" = clustalo ]
             then
             clustalo -i "${NAME}_results/results/phylogeny/FINAL.fasta" \
              -o "${NAME}_results/results/phylogeny/FINAL.mafft"
-        elif [ "$MSA_ALG" = muscle ]
+        elif [ "$MSA_ALG_1" = muscle ]
             then
             muscle  -in "${NAME}_results/results/phylogeny/FINAL.fasta"\
              -out "${NAME}_results/results/phylogeny/FINAL.mafft"
-        elif [ "$MSA_ALG" = mafft ]
+        elif [ "$MSA_ALG_1" = mafft ]
             then
-            mafft --quiet "${NAME}_results/results/phylogeny/FINAL.fasta"\
+            mafft --quiet --thread -1 "${NAME}_results/results/phylogeny/FINAL.fasta"\
             > "${NAME}_results/results/phylogeny/FINAL.mafft"
         else
             echo "Named MSA algorithm was not found! "
@@ -765,15 +797,15 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         
         # Run phylogeny with chosen algorithm (rename the final file, if no fa
         # sttree is chosen to one with .nwk extension)
-        if  [ "$TREE_ALG" = fasttree ]
+        if  [ "$TREE_ALG_1" = fasttree ]
             then
             fasttree -quiet -nt -gtr -out "${NAME}_results/results/phylogeny/FINAL.nwk"\
              "${NAME}_results/results/phylogeny/FINAL.mafft"
-        elif [ "$TREE_ALG" = iqtree ]
+        elif [ "$TREE_ALG_1" = iqtree ]
             then
             iqtree  -T 1 -m GTR -s "${NAME}_results/results/phylogeny/FINAL.mafft"
             cp FINAL.mafft.treefile "${NAME}_results/results/phylogeny/FINAL.nwk"
-        elif [ "$TREE_ALG" = raxml ]
+        elif [ "$TREE_ALG_1" = raxml ]
             then
             raxmlHPC -s "${NAME}_results/results/phylogeny/FINAL.mafft" -n \
             FINAL.tmp -m  GTRCAT --print-identical-sequences
@@ -826,7 +858,7 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         echo "The results are within mean outlier values"
     fi
     if [ "$(cat Results_median_outliers.csv | grep "${INPUT_NAME_2}")" ]; then
-        echo "The results are within meadian values"
+        echo "The results are within median outlier values"
     fi
     cd ../../
     rm 	Rplots.pdf
