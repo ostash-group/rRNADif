@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Passed arguments:
-# $1 - The filename of a GenBank csv file. Used as database name
+# $1 - The filename of a folder
 # $2 - Where to locate R and python scripts
 # $3 - Which MSA algoritm to use
 # $4 - Which phylogeny computign program to use
@@ -34,9 +34,11 @@ hr
 
 # Rename the sequence headers and files, using filename.
 echo "Step 4: Renaming sequence files..."
-for i in *.16S; do \
-awk '/^>/{print ">" substr(FILENAME,1,length(FILENAME)-6); next} 1' $i \
-| perl -pe 's/$/_$seen{$_}/ if ++$seen{$_}>1 and /^>/; ' > $(basename -s .16S $i).fasta; \
+for i in *.16S ; do python ../scripts/rename_fasta_headers.py $(pwd) $i
+done
+
+for i in *.16S ; do 
+perl -pe 's/$/_$seen{$_}/ if ++$seen{$_}>1 and /^>/; ' $i > $(basename -s .16S $i).fasta
 done
 
 # Find size 0 files (no rrnas or 16S rrnas). Move them to the separate directory
@@ -124,5 +126,5 @@ cd one_rrna && basename -s .fasta `ls *` > "${FILENAME}_one_tmp.csv" && \
 mv "${FILENAME}_one.csv" ../ && rm *.csv && cd ..
 
 # Final cleaning 
-mv one_rrna "${FILENAME}_one_rna" 
+mv one_rrna "${FILENAME}_one_rrna" 
 mv *.fasta  "${FILENAME}_16S_rna"
