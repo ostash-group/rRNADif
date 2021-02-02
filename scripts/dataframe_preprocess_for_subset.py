@@ -62,6 +62,6 @@ subset_csv = process_dataframe(sys.argv[1])
 # Use the dataframe with organisms that have > 2 16S for a subset
 subset_final = check_two_dataframes(master_csv, subset_csv)
 subset_final.to_csv(sys.argv[2], index = False)
-# Use the dataframe with organisms that have > 2 16S for a subset
+# Use the dataframe with organisms that have one 16S for a subset
 subset_final_2 = check_two_dataframes(master_2_csv, subset_csv)
 subset_final_2.to_csv(sys.argv[5], index = False)

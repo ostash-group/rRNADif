@@ -1,5 +1,6 @@
 # Introduction
 [![DOI](https://zenodo.org/badge/314172997.svg)](https://zenodo.org/badge/latestdoi/314172997)
+<a href="https://github.com/ostash-group/rRNADif" target="_blank"><img alt="rRNADif" src="https://badges.pufler.dev/visits/ostash-group/rRNADif?logo=GitHub&label=visits&color=success&logoColor=white&style=flat-square"/></a>
 
 rRNADif is a method to measure intragenomic 16S rRNA variability within the desired genome sequence against a chosen set of organisms. The app is calculating ML phylogenetic tree and uses mean/median branch length within set of 16S rRNA as a measure of variability between them <br>
 By default precomputed database of 21000+ fully sequenced bacterial genomes is available for comparison. However, custom database generation is possible (see [documentation](https://ostash-group.github.io/rRNADif/))<br>

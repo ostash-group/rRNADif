@@ -132,6 +132,9 @@ echo "Step 5: Removing 1 sequence files and zero size files..."
 mkdir one_rrna
 mv `grep -c  '>' *.fasta | awk -F':' '{ if ($2<=1) print $1}'` one_rrna
 
+rm `find ./ -size 0 | grep "fasta"`
+
+
 # Add number to the duplicate fasta headers in fasta files
 for i in *.fasta; do cat $i | perl -pe 's/$/_$seen{$_}/ if ++$seen{$_}>1 and /^>/; '\
  | sed 's/;_/_/g' > $i.clean; done
@@ -196,5 +199,5 @@ cd one_rrna && basename -s .fasta `ls *` > "${FILENAME}_one_tmp.csv" && \
 && mv "${FILENAME}_one.csv" ../ && rm *.csv && cd ..
 
 # Final cleaning 
-mv one_rrna "${FILENAME}_one_rna" 
+mv one_rrna "${FILENAME}_one_rrna" 
 mv *.fasta  "${FILENAME}_16S_rna"

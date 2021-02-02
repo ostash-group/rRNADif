@@ -23,6 +23,7 @@ PHYLO=0
 SPLIT=100
 SPLIT_BOOL=0
 ONLY_SPECIES=FALSE
+UPDATE_DB_BOOL=0
 
 # If any errors stop script execution
 set -e 
@@ -53,6 +54,7 @@ rRNADif was created at Ivan Franko National University of Lviv.
 Usage: -i|--input [FILE]; -d|--database_file [FILE]; -p|--project_name [NAME];
        [-n|--database_name [NAME]]; [-s|--sequence [FILE]]; [--plot][--tree]; 
        [--makedb_file [FILE]]; [--makedb_genomes [FOLDER]]; [--split_download [NUM]]
+       [--updatedb_file [FILE]]; [--updatedb_genomes [FOLDER]];
        [--step [1,2,3,4,0]]; [-m|--msa_alg [mafft, muscle,clustalo]]; 
        [-t|--tree_alg [fasttree, iqtree]]; [--only_phylo]; [--only_species];
        [-h|--help]; [-v|--version]
@@ -102,7 +104,15 @@ reconstruct phylogeny
 
     --makedb_genomes  - make custom database in provided folder with genomes' 
                         sequences. Note: filenames will be treated as organism 
-                        names!!!!
+                        names!
+    
+    --updatedb_file   - Use csv file from "Browse by Genome" to update existing
+                        database. Should use with -n flag (or default database
+                        will be updated)
+    
+    --updatedb_genomes- Use local folder with genome sequences to update existing
+                        database. Should use with -n flag (or default database
+                        will be updated)
 
     --step: 1     - Run only barrnap on provided sequence file. 
             2     - Begin from provided multi-fasta file with 16S rRNA sequences.
@@ -147,7 +157,7 @@ Examples: sh rnadif.sh -i Genome.fna -d Streptomyces.csv -p Streptomyces --step
     -v|--version - print version and exit. 
 
 
-GitHub page: https://github.com/pavlohrab/rRNADif
+GitHub page: https://github.com/ostash-group/rRNADif
 
 Feel free to post any issues!
 
@@ -238,6 +248,17 @@ while (( "$#" )); do
             exit 1
           fi
       ;;
+    --updatedb_file)
+        if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+            UPDATE_DB=$2
+            UPDATE_DB_BOOL=1
+            MAKEDB_BOOL=1
+            shift 2
+          else
+            echo "Error: Argument for $1 is missing" >&2
+            exit 1
+          fi
+      ;;
     --split_download)
         if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
             SPLIT=$2
@@ -254,6 +275,18 @@ while (( "$#" )); do
         if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
             MAKEDB_FOLDER=$2
             MAKEDB_BOOL_1=1
+            shift 2
+          else
+            echo "Error: Argument for $1 is missing" >&2
+            exit 1
+          fi
+      ;;
+    --updatedb_genomes)
+        if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+            UPDATE_DB=$2
+            UPDATE_DB_BOOL=1
+            MAKEDB_BOOL_1=1
+            UPDATE_DB_FOLDER=TRUE
             shift 2
           else
             echo "Error: Argument for $1 is missing" >&2
@@ -358,12 +391,28 @@ if [ "$MAKEDB_BOOL" -eq 1 ] || [ "$MAKEDB_BOOL_1" -eq 1 ]; then
     if [ "$MAKEDB_BOOL" -eq 1 ] ; then 
         echo 'Downloading and making database'
         # Make tmp folder and copy input there
-        mkdir tmp_database 
-        cp $MAKEDB tmp_database
+        mkdir tmp_database
+        if [[ $UPDATE_DB_BOOL -eq 1 ]]; then
+            cp $UPDATE_DB tmp_database
+            # Copy 
+            cp "datasets/downloaded_csv/${DATABASE_FOLDER}.csv" tmp_database
+            cp "datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_all.csv" tmp_database
+        else
+            cp $MAKEDB tmp_database
+        fi
         # Navigate to that directory
         cd tmp_database
         # The file itself is the last bit of path string. Extract that.
-        MAKEDB_NAME=$(echo "$MAKEDB" | awk -F '/' '{print $NF}')		
+        # + some logic for db update. Substitute the dataframe that would be
+        # downloaded
+        if [[ $UPDATE_DB_BOOL -eq 1 ]]; then
+            UPDATE_DB_NAME=$(echo "$UPDATE_DB" | awk -F '/' '{print $NF}')
+            python ../scripts/update_db.py $DATABASE_FOLDER $UPDATE_DB_NAME FALSE \
+            $(pwd)
+            MAKEDB_NAME=to_update.csv
+        else 
+            MAKEDB_NAME=$(echo "$MAKEDB" | awk -F '/' '{print $NF}')
+        fi		
         hr
         # Some logic about if the phylogeny and msa algorithms are passed through
         # arguments and if split download is needed. 
@@ -391,34 +440,126 @@ if [ "$MAKEDB_BOOL" -eq 1 ] || [ "$MAKEDB_BOOL_1" -eq 1 ]; then
         FILENAME="$(basename -s .csv $MAKEDB_NAME)"
         # Make directory in datasets/computed with this filename and move-rename
         # all the generated result files there.
-        mkdir "../datasets/computed/${FILENAME}"
-        mv "${FILENAME}_all.csv"  "../datasets/computed/${FILENAME}"
-        mv "${FILENAME}_one.csv"  "../datasets/computed/${FILENAME}"
-        mv "${FILENAME}_mean_outliers.csv"  "../datasets/computed/${FILENAME}"
-        mv "${FILENAME}_median_outliers.csv"  "../datasets/computed/${FILENAME}"
-        mv "${FILENAME}_no_ouliers.csv"  "../datasets/computed/${FILENAME}"
-        mv "${FILENAME}_16S_rna" "../datasets/computed/${FILENAME}/rrna"
-        mv "${FILENAME}_one_rna" "../datasets/computed/${FILENAME}/one_rrna"
-        mv "${FILENAME}_no_rrna" "../datasets/computed/${FILENAME}/no_rrna"
-        # Remove all tmp folder
-        cd .. && rm -rf mkdir tmp_database 
-        # Remain csv file which was used to make database
-        cp $MAKEDB datasets/downloaded_csv/$MAKEDB
-        hr
-        echo "Database is created and accesible via -n flag"
-        echo "For database name please see datasets/computed/folder-name"
+        if [[ $UPDATE_DB_BOOL -eq 1 ]]; then
+            if [[ -f "${FILENAME}_all.csv" ]]; then
+                cat "${FILENAME}_all.csv" | tail -n +2 > "${FILENAME}_all_tmp.csv"
+                cat "${DATABASE_FOLDER}_all.csv" "${FILENAME}_all_tmp.csv" > ${DATABASE_FOLDER}_updated.csv
+            fi
+            if [[ -f "${FILENAME}_one.csv" ]]; then
+                cat "${FILENAME}_one.csv" | tail -n +2 > "${FILENAME}_one_tmp.csv"
+                cat ${DATABASE_FOLDER}_updated.csv "${FILENAME}_one_tmp.csv" > ${DATABASE_FOLDER}_updated_2.csv
+            fi
+            if [[ -d "${FILENAME}_16S_rna" ]]; then
+                cp -R ${FILENAME}_16S_rna/* "../datasets/computed/${DATABASE_FOLDER}/rrna"
+            fi
+            if [[ -d "${FILENAME}_one_rrna" ]]; then
+                cp -R ${FILENAME}_one_rrna/* "../datasets/computed/${DATABASE_FOLDER}/one_rrna"
+            fi
+            if [[ -d "${FILENAME}_no_rrna" ]]; then
+                if [[ -z "$(ls -A "${FILENAME}_no_rrna" )"  ]]; then
+                :
+                else
+                cp -R ${FILENAME}_no_rrna/* "../datasets/computed/${DATABASE_FOLDER}/no_rrna"
+                fi
+            fi
+            Rscript ../scripts/update_dataframe_stats.R  ${DATABASE_FOLDER}_updated.csv $(pwd) $DATABASE_FOLDER
+            if [[ -f "${DATABASE_FOLDER}_all_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_all_new.csv"  "../datasets/computed/${DATABASE_FOLDER}/"${DATABASE_FOLDER}_all.csv""
+            fi
+            if [[ -f "${FILENAME}_one_tmp.csv" ]]; then
+                if [[ -f "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv" ]]; then
+                cat "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv" "${FILENAME}_one_tmp.csv" \
+                >  "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one_1.csv"
+                rm "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv"
+                mv "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one_1.csv" \
+                "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv"
+                else
+                mv "${FILENAME}_one.csv" "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv"
+                fi
+            fi
+            if [[ -f "${DATABASE_FOLDER}_mean_outliers_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_mean_outliers_new.csv" \
+             "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_mean_outliers.csv"
+            fi
+            if [[ -f "${DATABASE_FOLDER}_median_outliers_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_median_outliers_new.csv"\
+              "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_median_outliers.csv"
+            fi
+            if [[ -f "${DATABASE_FOLDER}_no_ouliers_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_no_ouliers_new.csv" \
+             "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_no_ouliers.csv" 
+            fi
+            # Update downloaded genomes file
+            awk -F ',' '{print $1}'  "${FILENAME}_one_tmp.csv" > "${FILENAME}_one_tmp_1.csv"
+            awk -F ',' '{print $1}'  "${FILENAME}_all_tmp.csv" > "${FILENAME}_all_tmp_1.csv"
+            cat ${DATABASE_FOLDER}.csv "${FILENAME}_all_tmp_1.csv" "${FILENAME}_one_tmp_1.csv" > ${DATABASE_FOLDER}_1.csv
+            cp ${DATABASE_FOLDER}_1.csv ../datasets/downloaded_csv/${DATABASE_FOLDER}.csv
+            # Remove all tmp folder
+            cd .. && rm -rf tmp_database 
+            # Remain csv file which was used to make database
+            echo "Database is updated and accesible via -n flag"
+            echo "For database name please see datasets/computed/folder-name"
+        else
+            mkdir "../datasets/computed/${FILENAME}"
+            if [[ -f "${FILENAME}_all.csv" ]]; then
+            mv "${FILENAME}_all.csv"  "../datasets/computed/${FILENAME}"
+            fi
+            if [[ -f "${FILENAME}_one.csv" ]]; then
+            mv "${FILENAME}_one.csv"  "../datasets/computed/${FILENAME}"
+            fi
+            if [[ -f "${FILENAME}_mean_outliers.csv" ]]; then
+            mv "${FILENAME}_mean_outliers.csv"  "../datasets/computed/${FILENAME}"
+            fi
+            if [[ -f "${FILENAME}_median_outliers.csv" ]]; then
+            mv "${FILENAME}_median_outliers.csv"  "../datasets/computed/${FILENAME}"
+            fi
+            if [[ -f "${FILENAME}_no_ouliers.csv" ]]; then
+            mv "${FILENAME}_no_ouliers.csv"  "../datasets/computed/${FILENAME}"
+            fi
+            if [[ -d "${FILENAME}_16S_rna" ]]; then
+            mv "${FILENAME}_16S_rna" "../datasets/computed/${FILENAME}/rrna"
+            fi
+            if [[ -d "${FILENAME}_one_rrna" ]]; then
+            mv "${FILENAME}_one_rrna" "../datasets/computed/${FILENAME}/one_rrna"
+            fi
+            if [[ -d "${FILENAME}_no_rrna" ]]; then
+            mv "${FILENAME}_no_rrna" "../datasets/computed/${FILENAME}/no_rrna"
+            fi
+            # Remain csv file which was used to make database
+            python ../scripts/archive_data.py $MAKEDB $(pwd)
+            cp ${FILENAME}_new.csv ../datasets/downloaded_csv/$MAKEDB
+            # Remove all tmp folder
+            cd .. && rm -rf tmp_database 
+            echo "Database is created and accesible via -n flag"
+            echo "For database name please see datasets/computed/folder-name"
+        fi
         hr
         exit 1
     elif [ "$MAKEDB_BOOL_1" -eq 1 ] ; then 
         echo "Making database from sequence folder"
         # Make tmp folder and copy inputs there
         mkdir tmp_database
-        cp "${MAKEDB_FOLDER}"/* tmp_database
-        MAKEDB_NAME=$(basename "$MAKEDB_FOLDER")
+        if [[ $UPDATE_DB_BOOL -eq 1 ]]; then
+            cp "${UPDATE_DB}"/* tmp_database
+        else
+            cp "${MAKEDB_FOLDER}"/* tmp_database
+        fi
         # Make the folder in datasets/computed
-        mkdir "datasets/computed/${MAKEDB_NAME}"
         cd tmp_database
         ls * > list.txt
+        if [[ $UPDATE_DB_BOOL -eq 1 ]]; then
+            cp "../datasets/downloaded_csv/${DATABASE_FOLDER}.csv" ./
+            cp "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_all.csv" ./
+            MAKEDB_NAME=$(basename "$UPDATE_DB")
+            python ../scripts/update_db.py $DATABASE_FOLDER $MAKEDB_NAME TRUE $(pwd)
+            cat to_update.csv | tail -n +2 > to_update.txt
+            rm list.txt
+            mv to_update.txt list.txt
+        else 
+            MAKEDB_NAME=$(basename "$MAKEDB_FOLDER")
+            mkdir "../datasets/computed/${MAKEDB_NAME}"
+        fi		
+        hr
         cp ../scripts/annotate_and_rename_sequences_folder.sh ./
         # TO-DO: Do we need this?
         if [ "$PHYLO" -eq 0 ]; then
@@ -429,18 +570,91 @@ if [ "$MAKEDB_BOOL" -eq 1 ] || [ "$MAKEDB_BOOL_1" -eq 1 ]; then
             mafft fasttree
         fi
         # Move-rename the result files into datasets/computed folder
-        mv "${MAKEDB_NAME}_all.csv"  "../datasets/computed/${MAKEDB_NAME}"
-        mv "${MAKEDB_NAME}_one.csv"  "../datasets/computed/${MAKEDB_NAME}"
-        mv "${MAKEDB_NAME}_mean_outliers.csv"  "../datasets/computed/${MAKEDB_NAME}"
-        mv "${MAKEDB_NAME}_median_outliers.csv"  "../datasets/computed/${MAKEDB_NAME}"
-        mv "${MAKEDB_NAME}_no_ouliers.csv"  "../datasets/computed/${MAKEDB_NAME}"
-        mv "${MAKEDB_NAME}_16S_rna" "../datasets/computed/${MAKEDB_NAME}/rrna"
-        mv "${MAKEDB_NAME}_one_rrna" "../datasets/computed/${MAKEDB_NAME}/one_rrna"
-        mv "${MAKEDB_NAME}_no_rrna" "../datasets/computed/${MAKEDB_NAME}/no_rrna"
-        # rm tmp folder
-        cd .. && rm -rf mkdir tmp_database 
-        # Copy csv file. used for database generation into datasets/downloaded_csv 
-        cp $MAKEDB datasets/downloaded_csv/$MAKEDB
+        if [[ $UPDATE_DB_BOOL -eq 1 ]]; then
+            if [[ -f "${MAKEDB_NAME}_all.csv" ]]; then
+                cat "${MAKEDB_NAME}_all.csv" | tail -n +2 > "${MAKEDB_NAME}_all_tmp.csv"
+                cat "${DATABASE_FOLDER}_all.csv" "${MAKEDB_NAME}_all_tmp.csv" > ${DATABASE_FOLDER}_updated.csv
+            fi
+            if [[ -f "${MAKEDB_NAME}_one.csv" ]]; then
+                cat "${MAKEDB_NAME}_one.csv" | tail -n +2 > "${MAKEDB_NAME}_one_tmp.csv"
+                cat ${DATABASE_FOLDER}_updated.csv "${MAKEDB_NAME}_one_tmp.csv" > ${DATABASE_FOLDER}_updated_2.csv
+            fi
+            if [[ -d "${MAKEDB_NAME}_16S_rna" ]]; then
+                cp -R ${MAKEDB_NAME}_16S_rna/* "../datasets/computed/${DATABASE_FOLDER}/rrna"
+            fi
+            if [[ -d "${MAKEDB_NAME}_one_rrna" ]]; then
+                cp -R ${MAKEDB_NAME}_one_rrna/* "../datasets/computed/${DATABASE_FOLDER}/one_rrna"
+            fi
+            if [[ -d "${MAKEDB_NAME}_no_rrna" ]]; then
+                if [[ -z "$(ls -A "${MAKEDB_NAME}_no_rrna" )"  ]]; then
+                :
+                else
+                cp -R ${MAKEDB_NAME}_no_rrna/* "../datasets/computed/${DATABASE_FOLDER}/no_rrna"
+                fi
+            fi
+            Rscript ../scripts/update_dataframe_stats.R  ${DATABASE_FOLDER}_updated.csv $(pwd) $DATABASE_FOLDER
+            if [[ -f "${DATABASE_FOLDER}_all_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_all_new.csv"  "../datasets/computed/${DATABASE_FOLDER}/"${DATABASE_FOLDER}_all.csv""
+            fi
+            if [[ -f "${MAKEDB_NAME}_one_tmp.csv" ]]; then
+                if [[ -f "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv" ]]; then
+                cat "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv" "${MAKEDB_NAME}_one_tmp.csv" >  "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one_1.csv"
+                rm "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv"
+                mv "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one_1.csv" "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv"
+                else
+                mv "${MAKEDB_NAME}_one.csv" "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_one.csv"
+                fi
+            fi
+            if [[ -f "${DATABASE_FOLDER}_mean_outliers_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_mean_outliers_new.csv"  "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_mean_outliers.csv"
+            fi
+            if [[ -f "${DATABASE_FOLDER}_median_outliers_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_median_outliers_new.csv"  "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_median_outliers.csv"
+            fi
+            if [[ -f "${DATABASE_FOLDER}_no_ouliers_new.csv" ]]; then
+            mv "${DATABASE_FOLDER}_no_ouliers_new.csv"  "../datasets/computed/${DATABASE_FOLDER}/${DATABASE_FOLDER}_no_ouliers.csv" 
+            fi
+            # Update downloaded genomes file
+            awk -F ',' '{print $1}'  "${MAKEDB_NAME}_one_tmp.csv" > "${MAKEDB_NAME}_one_tmp_1.csv"
+            awk -F ',' '{print $1}'  "${MAKEDB_NAME}_all_tmp.csv" > "${MAKEDB_NAME}_all_tmp_1.csv"
+            cat ${DATABASE_FOLDER}.csv "${MAKEDB_NAME}_all_tmp_1.csv" "${MAKEDB_NAME}_one_tmp_1.csv" > ${DATABASE_FOLDER}_1.csv
+            cp ${DATABASE_FOLDER}_1.csv ../datasets/downloaded_csv/${DATABASE_FOLDER}.csv
+            # Remove all tmp folder
+            cd .. && rm -rf tmp_database 
+        else
+            if [[ -f "${MAKEDB_NAME}_all.csv" ]]; then
+            mv "${MAKEDB_NAME}_all.csv"  "../datasets/computed/${MAKEDB_NAME}"
+            fi
+            if [[ -f "${MAKEDB_NAME}_one.csv" ]]; then
+            mv "${MAKEDB_NAME}_one.csv"  "../datasets/computed/${MAKEDB_NAME}"
+            fi
+            if [[ -f "${MAKEDB_NAME}_mean_outliers.csv" ]]; then
+            mv "${MAKEDB_NAME}_mean_outliers.csv"  "../datasets/computed/${MAKEDB_NAME}"
+            fi
+            if [[ -f "${MAKEDB_NAME}_median_outliers.csv" ]]; then
+            mv "${MAKEDB_NAME}_median_outliers.csv"  "../datasets/computed/${MAKEDB_NAME}"
+            fi
+            if [[ -f "${MAKEDB_NAME}_no_ouliers.csv" ]]; then
+            mv "${MAKEDB_NAME}_no_ouliers.csv"  "../datasets/computed/${MAKEDB_NAME}"
+            fi
+            if [[ -d "${MAKEDB_NAME}_16S_rna" ]]; then
+            mv "${MAKEDB_NAME}_16S_rna" "../datasets/computed/${MAKEDB_NAME}/rrna"
+            fi
+            if [[ -d "${MAKEDB_NAME}_one_rrna" ]]; then
+            mv "${MAKEDB_NAME}_one_rrna" "../datasets/computed/${MAKEDB_NAME}/one_rrna"
+            fi
+            if [[ -d "${MAKEDB_NAME}_no_rrna" ]]; then
+            mv "${MAKEDB_NAME}_no_rrna" "../datasets/computed/${MAKEDB_NAME}/no_rrna"
+            fi
+            # Copy csv file. used for database generation into datasets/downloaded_csv 
+            awk -F ',' '{print $1}'  "../datasets/computed/${MAKEDB_NAME}/${MAKEDB_NAME}_all.csv" | tail -n +2 > "$MAKEDB_NAME.csv"
+            awk -F ',' '{print $1}'  "../datasets/computed/${MAKEDB_NAME}/${MAKEDB_NAME}_one.csv" | tail -n +2 > "${MAKEDB_NAME}_2.csv"
+            cat "$MAKEDB_NAME.csv"  "${MAKEDB_NAME}_2.csv" > "${MAKEDB_NAME}_3.csv"
+            sed -i '1s/^/Species_names\n/' "${MAKEDB_NAME}_3.csv"
+            mv "${MAKEDB_NAME}_3.csv" "../datasets/downloaded_csv/$MAKEDB_NAME.csv"
+            # rm tmp folder
+            cd .. && rm -rf mkdir tmp_database  
+        fi      
         hr
         echo "Database is created and accesible via -n flag"
         echo "For database name please see datasets/computed/folder-name"
@@ -586,7 +800,15 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         rm -f "${NAME}_results"/database_rrnas/cleaned/*.fasta
         hr
     fi
-
+    # Make better names for fasta files. Remove .clean extension, add .fasta one
+    cd "${NAME}_results/database_rrnas/cleaned" 
+    for file in *.fasta.clean; do
+        mv "$file" "$(basename "$file" .fasta.clean).fasta"
+    done
+    for file in *.clean; do
+        mv "$file" "$(basename "$file" .clean).fasta"
+    done
+    cd ../../../
     # Check the step variable (the --step argument passed) to know from where
     # to run an analysis. If step == 0 (default), then all the below chunks of 
     # code would run (all the analysis pipeline) 
@@ -631,7 +853,7 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
                 clustalo -i "${NAME}_results/input_files/${INPUT}" \
                  -o "${NAME}_results/results/${INPUT_NAME_2}_16S_mafft.fasta"
             elif [ "$MSA_ALG" = muscle ]; then
-                muscle -quiet  = "${NAME}_results/input_files/${INPUT}" \
+                muscle -quiet  -in "${NAME}_results/input_files/${INPUT}" \
                  -out "${NAME}_results/results/${INPUT_NAME_2}_16S_mafft.fasta"
             elif [ "$MSA_ALG" = mafft ]; then
                 mafft --quiet "${NAME}_results/input_files/${INPUT}" > \
@@ -700,7 +922,7 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
                 hr
                 exit 1
             fi
-            cp "${NAME}_results/input_files/${INPUT}" "${NAME}_results/results/${INPUT_NAME_2}_mafft.fasta"
+            cp "${NAME}_results/input_files/${INPUT}" "${NAME}_results/results/${INPUT_NAME_2}_16S_mafft.fasta"
             # Copy provided 16S sequences for latter use
             if [ "$SEQUENCE_B" -eq 1 ]; then
                 cp  "${SEQUENCE}" "${NAME}_results/results/${INPUT_NAME_2}_16S_clean_rrna.fasta"
@@ -717,7 +939,7 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
                 "${NAME}_results/results/${INPUT_NAME_2}_16S_mafft.fasta"
             elif [ "$TREE_ALG" = iqtree ]; then
                 iqtree --quiet -T 1 -m GTR -s "${NAME}_results/results/${INPUT_NAME_2}_16S_mafft.fasta"
-                cp "${INPUT_NAME_2}"*.treefile "${NAME}_results/results/${INPUT_NAME_2}_16S.nwk"
+                cp "${NAME}_results/results/${INPUT_NAME_2}"*.treefile "${NAME}_results/results/${INPUT_NAME_2}_16S.nwk"
             elif [ "$TREE_ALG" = raxml ]; then
                 raxmlHPC -s "${NAME}_results/results/${INPUT_NAME_2}_16S_mafft.fasta" -n \
                 "${INPUT_NAME_2}".tmp -m  GTRCAT --print-identical-sequences
@@ -804,12 +1026,18 @@ if [ "$MAKEDB_BOOL" -eq 0 ] && [ "$MAKEDB_BOOL_1" -eq 0 ]; then
         elif [ "$TREE_ALG_1" = iqtree ]
             then
             iqtree  -T 1 -m GTR -s "${NAME}_results/results/phylogeny/FINAL.mafft"
-            cp FINAL.mafft.treefile "${NAME}_results/results/phylogeny/FINAL.nwk"
+            cp "${NAME}_results/results/phylogeny/FINAL.mafft.treefile" "${NAME}_results/results/phylogeny/FINAL.nwk"
+            cd "${NAME}_results/results/phylogeny/" && rm -f FINAL.mafft.bionj \
+            FINAL.mafft.ckp.gz FINAL.mafft.iqtree FINAL.mafft.log \
+            FINAL.mafft.mldist FINAL.mafft.treefile FINAL.mafft.uniqueseq.phy && \
+            cd ../../../
         elif [ "$TREE_ALG_1" = raxml ]
             then
             raxmlHPC -s "${NAME}_results/results/phylogeny/FINAL.mafft" -n \
             FINAL.tmp -m  GTRCAT --print-identical-sequences
             cp RAxML_bestTree.FINAL.tmp "${NAME}_results/results/phylogeny/FINAL.nwk"
+            rm -f RAxML_result.FINAL.tmp RAxML_info.FINAL.tmp \
+            RAxML_bestTree.FINAL.tmp RAxML_log.FINAL.tmp RAxML_parsimonyTree.FINAL.tmp
         else
             echo "Named TREE algorithm was not found! "
             echo "Please check the spelling and look in help for available options"
