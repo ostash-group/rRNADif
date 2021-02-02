@@ -1,6 +1,12 @@
 # Introduction
-[![DOI](https://zenodo.org/badge/314172997.svg)](https://zenodo.org/badge/latestdoi/314172997)
-<a href="https://github.com/ostash-group/rRNADif" target="_blank"><img alt="rRNADif" src="https://badges.pufler.dev/visits/ostash-group/rRNADif?logo=GitHub&label=visits&color=success&logoColor=white&style=flat-square"/></a>
+![Visitor count](https://shields-io-visitor-counter.herokuapp.com/badge?page=ostash-group.rRNADif&style=for-the-badge)
+![GitHub](https://img.shields.io/github/license/ostash-group/rRNADif?style=for-the-badge)
+![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ostash-group/rRNADif?include_prereleases&style=for-the-badge)
+![GitHub issues](https://img.shields.io/github/issues/ostash-group/rRNADif?style=for-the-badge)
+![GitHub Repo stars](https://img.shields.io/github/stars/ostash-group/rRNADif?style=for-the-badge)
+![GitHub contributors](https://img.shields.io/github/contributors/ostash-group/rRNADif?style=for-the-badge)
+
+![DOI](http://img.shields.io/badge/DOI-10.5281%20%2F%20zenodo.4390532-blue.svg?style=for-the-badge)
 
 rRNADif is a method to measure intragenomic 16S rRNA variability within the desired genome sequence against a chosen set of organisms. The app is calculating ML phylogenetic tree and uses mean/median branch length within set of 16S rRNA as a measure of variability between them <br>
 By default precomputed database of 21000+ fully sequenced bacterial genomes is available for comparison. However, custom database generation is possible (see [documentation](https://ostash-group.github.io/rRNADif/))<br>
